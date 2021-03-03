@@ -127,6 +127,8 @@ local VALID_CLASS_MEMBER_TYPES: dictionary<string, boolean> = {
 	Property = true,
 }
 
+local memoise = require(script.Parent:FindFirstChild("memoize"))
+
 -- copies a table's values, including for k/v that are also ables
 -- does not copy metatables
 local tableDeepCopy
@@ -145,7 +147,17 @@ tableDeepCopy = function(tab: anyTable): anyTable
 	return copy
 end
 
-local memoise = require(script.Parent:FindFirstChild("memoize"))
+local memoiseProxy = function(callback)
+	local memoisedCallback = memoise(callback)
+
+	return function(self, ...)
+		if (self.__memoise) then
+			return memoisedCallback(self, ...)
+		else
+			return callback(self, ...)
+		end
+	end
+end
 
 ---
 
@@ -182,13 +194,14 @@ export type APIData = {
 	},
 }
 
-APIData.new = function(apiDump: JSONAPIDump)
+APIData.new = function(apiDump: JSONAPIDump, memoise: boolean?)
 	-- todo: check that EnumItems have integer Values
 
 	-- verify version
 	assert(VALID_API_DUMP_VERSIONS[apiDump.Version], "API dump version " .. apiDump.Version .. " is not supported")
 
 	local self: APIData = {
+		__memoise = memoise,
 		__originalData = tableDeepCopy(apiDump),
 
 		__data = {
@@ -261,7 +274,7 @@ APIData.new = function(apiDump: JSONAPIDump)
 end
 
 -- Returns an APIClass
-APIData.GetClassData = memoise(function(self: APIData, className: string): APIClass?
+APIData.GetClassData = memoiseProxy(function(self: APIData, className: string): APIClass?
 	local classIndex: number? = self.__indexMappings.Classes[className]
 	if (not classIndex) then return end
 
@@ -270,7 +283,7 @@ end)
 
 -- Returns an array of class names, in the form
 -- { className, superclass1, ..., "Instance" }
-APIData.GetClassHierarchy = memoise(function(self: APIData, className: string): array<string>?
+APIData.GetClassHierarchy = memoiseProxy(function(self: APIData, className: string): array<string>?
 	local hierarchy: array<string> = {}
 
 	local classIndex: number? = self.__indexMappings.Classes[className]
@@ -293,7 +306,7 @@ APIData.GetClassHierarchy = memoise(function(self: APIData, className: string): 
 end)
 
 -- Returns a dictionary containing arrays of class members
-APIData.__getClassMembers = memoise(function(self: APIData, className: string, memberType: string, filterParams: GetClassMembersParams?): dictionary<string, array<APIClassMember>>?
+APIData.__getClassMembers = memoiseProxy(function(self: APIData, className: string, memberType: string, filterParams: GetClassMembersParams?): dictionary<string, array<APIClassMember>>?
 	if (not VALID_CLASS_MEMBER_TYPES[memberType]) then return end
 
 	filterParams = filterParams or {}
@@ -337,7 +350,7 @@ APIData.__getClassMembers = memoise(function(self: APIData, className: string, m
 	return members
 end)
 
-APIData.GetClassMemberData = memoise(function(self: APIData, className: string, memberType: string, memberName: string): APIClassMember?
+APIData.GetClassMemberData = memoiseProxy(function(self: APIData, className: string, memberType: string, memberName: string): APIClassMember?
 	if (not VALID_CLASS_MEMBER_TYPES[memberType]) then return end
 
 	local classIndex: number = self.__indexMappings.Classes[className]
@@ -423,7 +436,7 @@ APIData.IsClassMemberNative = function(self: APIData, className: string, memberT
 end
 
 -- Returns an APIEnum
-APIData.GetEnumData = memoise(function(self: APIData, enumName: string): APIEnum?
+APIData.GetEnumData = memoiseProxy(function(self: APIData, enumName: string): APIEnum?
 	local enumIndex: number? = self.__indexMappings.Enums[enumName]
 	if (not enumIndex) then return end
 

@@ -126,77 +126,88 @@ APIInterface.CallFunction = function(self, object: Instance, functionName: strin
 end
 --]]
 
-APIInterface.GetProperty = function(self, object: Instance, propertyName: string, overrideClassName: string?): any
+-- Returns the property value of an object
+
+APIInterface.GetProperty = function(self, object: Instance, propertyName: string, overrideClassName: string?, noCheck: boolean?): any
 	local APIData = self.__APIData
 
-	local objectClassName = object.ClassName or overrideClassName
-	assert(APIData:DoesClassMemberExist(objectClassName, "Property", propertyName), "Property " .. propertyName .. " does not exist, or class " .. objectClassName .. " does not exist")
+	local objectClassName = overrideClassName or object.ClassName
+	assert(APIData:DoesClassMemberExist(objectClassName, "Property", propertyName, noCheck), "Property " .. propertyName .. " does not exist, or class " .. objectClassName .. " does not exist")
 
-	local properties = APIData:GetClassProperties(objectClassName)
-	local propertyData
-	local propertyClassName
+	local actualPropertyClassName
+	
+	if (noCheck) then
+		actualPropertyClassName = objectClassName
+	else
+		local properties = APIData:GetClassProperties(objectClassName)
 
-	for className, classProperties in pairs(properties) do
-		for i = 1, #classProperties do
-			local classProperty = classProperties[i]
-
-			if (classProperty.Name == propertyName) then
-				propertyData = classProperty
-				propertyClassName = className
-				break
+		for className, classProperties in pairs(properties) do
+			for i = 1, #classProperties do
+				local classProperty = classProperties[i]
+	
+				if (classProperty.Name == propertyName) then
+					actualPropertyClassName = className
+					break
+				end
 			end
 		end
 	end
 
-	if (APIData:IsClassMemberNative(propertyClassName, "Property", propertyData.Name)) then
+	if (APIData:IsClassMemberNative(actualPropertyClassName, "Property", propertyName)) then
 		return object[propertyName]
 	else
 		-- todo
-		local classBehaviourIndex = self.__behaviourIndex.ClassMember[propertyClassName]
-		assert(classBehaviourIndex, "No behaviour table is defined for class " .. propertyClassName)
+		local classBehaviourIndex = self.__behaviourIndex.ClassMember[actualPropertyClassName]
+		assert(classBehaviourIndex, "No behaviour table is defined for class " .. actualPropertyClassName)
 
 		local propertyBehaviourTable = classBehaviourIndex.Property[propertyName]
-		assert(propertyBehaviourTable, "No behaviour is defined for " .. propertyClassName .. "." .. propertyName)
+		assert(propertyBehaviourTable, "No behaviour is defined for " .. actualPropertyClassName .. "." .. propertyName)
 
 		return propertyBehaviourTable.Get(object)
 	end
 end
 
-APIInterface.SetProperty = function(self, object: Instance, propertyName: string, newValue: any, overrideClassName: string?)
+APIInterface.SetProperty = function(self, object: Instance, propertyName: string, newValue: any, overrideClassName: string?, noCheck: boolean?)
 	local APIData = self.__APIData
 
-	local objectClassName = object.ClassName or overrideClassName
-	assert(APIData:DoesClassMemberExist(objectClassName, "Property", propertyName, true), "Property " .. propertyName .. " does not exist, or class " .. objectClassName .. " does not exist")
+	local objectClassName = overrideClassName or object.ClassName 
+	assert(APIData:DoesClassMemberExist(objectClassName, "Property", propertyName, noCheck), "Property " .. propertyName .. " does not exist, or class " .. objectClassName .. " does not exist")
 
-	local properties = APIData:GetClassProperties(objectClassName)
-	local propertyData
-	local propertyClassName
+	local actualPropertyClassName
+	local propertyValueType
 
-	for className, classProperties in pairs(properties) do
-		for i = 1, #classProperties do
-			local classProperty = classProperties[i]
+	if (noCheck) then
+		actualPropertyClassName = objectClassName
 
-			if (classProperty.Name == propertyName) then
-				propertyData = classProperty
-				propertyClassName = className
-				break
+		local property = APIData:GetClassMemberData(actualPropertyClassName, "Property", propertyName)
+		propertyValueType = property.ValueType
+	else
+		local properties = APIData:GetClassProperties(objectClassName)
+
+		for className, classProperties in pairs(properties) do
+			for i = 1, #classProperties do
+				local classProperty = classProperties[i]
+
+				if (classProperty.Name == propertyName) then
+					propertyValueType = classProperty.ValueType
+					actualPropertyClassName = className
+					break
+				end
 			end
 		end
 	end
 
-	local propertyValueType = propertyData.ValueType
-
-	if (APIData:IsClassMemberNative(propertyClassName, "Property", propertyData.Name)) then
+	if (APIData:IsClassMemberNative(actualPropertyClassName, "Property", propertyName)) then
 		assert(checkDataType(propertyValueType, newValue), "Type check failed for " .. propertyName .. ", expected " .. propertyValueType.Name)
 
 		object[propertyName] = newValue
 	else
 		-- todo
-		local classMemberBehaviourIndex = self.__behaviourIndex.ClassMember[propertyClassName]
-		assert(classMemberBehaviourIndex, "No behaviour table is defined for class " .. propertyClassName)
+		local classMemberBehaviourIndex = self.__behaviourIndex.ClassMember[actualPropertyClassName]
+		assert(classMemberBehaviourIndex, "No behaviour table is defined for class " .. actualPropertyClassName)
 
 		local propertyBehaviourTable = classMemberBehaviourIndex.Property[propertyName]
-		assert(propertyBehaviourTable, "No behaviour is defined for " .. propertyClassName .. "." .. propertyName)
+		assert(propertyBehaviourTable, "No behaviour is defined for " .. actualPropertyClassName .. "." .. propertyName)
 		
 		assert(checkDataType(propertyValueType, newValue), "Type check failed for " .. propertyName .. ", expected " .. propertyValueType.Name)
 
