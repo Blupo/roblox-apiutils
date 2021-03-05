@@ -1,10 +1,7 @@
 {
   "name": "APIUtils",
+  
   "tree": {
-    "$path": "src",
-
-    "memoize": {
-      "$path": "includes/memoize/memoize.lua"
-    }
+    "$path": "src"
   }
 }

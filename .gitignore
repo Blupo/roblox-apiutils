@@ -1,2 +1,5 @@
 # build
-/*.rbxmx
+/build.rbxmx
+
+# roblox.toml
+/roblox.toml
