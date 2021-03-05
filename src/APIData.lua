@@ -30,6 +30,7 @@ type APICallback = {
 	ReturnType: DataTypeDescriptor,
 
 	Security: string,
+	ThreadSafety: string,
 	Tags: array<string>?,
 }
 
@@ -40,6 +41,7 @@ type APIEvent = {
 	Parameters: array<ParameterDescriptor>,
 
 	Security: string,
+	ThreadSafety: string,
 	Tags: array<string>?,
 }
 
@@ -51,6 +53,7 @@ type APIFunction = {
 	ReturnType: DataTypeDescriptor,
 
 	Security: string,
+	ThreadSafety: string,
 	Tags: array<string>?,
 }
 
@@ -72,6 +75,7 @@ type APIProperty = {
 	Tags: array<string>?,
 
 	ValueType: DataTypeDescriptor,
+	ThreadSafety: string,
 }
 
 type APIClassMember = APICallback | APIEvent | APIFunction | APIProperty
@@ -127,8 +131,6 @@ local VALID_CLASS_MEMBER_TYPES: dictionary<string, boolean> = {
 	Property = true,
 }
 
-local memoise = require(script.Parent:FindFirstChild("memoize"))
-
 -- copies a table's values, including for k/v that are also ables
 -- does not copy metatables
 local tableDeepCopy
@@ -147,25 +149,11 @@ tableDeepCopy = function(tab: anyTable): anyTable
 	return copy
 end
 
-local memoiseProxy = function(callback)
-	local memoisedCallback = memoise(callback)
-
-	return function(self, ...)
-		if (self.__memoise) then
-			return memoisedCallback(self, ...)
-		else
-			return callback(self, ...)
-		end
-	end
-end
-
 ---
 
 local APIData = {}
 
 export type APIData = {
-	__originalData: JSONAPIDump,
-
 	__data: {
 		Classes: array<APIClass>,
 		Enums: array<APIEnum>
@@ -194,19 +182,19 @@ export type APIData = {
 	},
 }
 
-APIData.new = function(apiDump: JSONAPIDump, memoise: boolean?)
+APIData.new = function(apiDump: JSONAPIDump)
 	-- todo: check that EnumItems have integer Values
+
+	-- API dump should be immutable
+	apiDump = tableDeepCopy(apiDump)
 
 	-- verify version
 	assert(VALID_API_DUMP_VERSIONS[apiDump.Version], "API dump version " .. apiDump.Version .. " is not supported")
 
 	local self: APIData = {
-		__memoise = memoise,
-		__originalData = tableDeepCopy(apiDump),
-
 		__data = {
-			Classes = tableDeepCopy(apiDump.Classes),
-			Enums = tableDeepCopy(apiDump.Enums),
+			Classes = apiDump.Classes,
+			Enums = apiDump.Enums,
 		},
 
 		__nativityIndex = {
@@ -226,8 +214,8 @@ APIData.new = function(apiDump: JSONAPIDump, memoise: boolean?)
 	setmetatable(self, {__index = APIData})
 
 	-- create mappings, populate nativity for classes
-	for i = 1, #self.__originalData.Classes do
-		local classData = self.__originalData.Classes[i]
+	for i = 1, #self.__data.Classes do
+		local classData = self.__data.Classes[i]
 
 		self.__nativityIndex.Classes[i] = true
 		self.__nativityIndex.ClassMembers[i] = {}
@@ -249,8 +237,8 @@ APIData.new = function(apiDump: JSONAPIDump, memoise: boolean?)
 	end
 
 	-- now for enums
-	for i = 1, #self.__originalData.Enums do
-		local enumData = self.__originalData.Enums[i]
+	for i = 1, #self.__data.Enums do
+		local enumData = self.__data.Enums[i]
 
 		self.__nativityIndex.Enums[i] = true
 		self.__nativityIndex.EnumItems[i] = {}
@@ -274,16 +262,16 @@ APIData.new = function(apiDump: JSONAPIDump, memoise: boolean?)
 end
 
 -- Returns an APIClass
-APIData.GetClassData = memoiseProxy(function(self: APIData, className: string): APIClass?
+APIData.GetClassData = function(self: APIData, className: string): APIClass?
 	local classIndex: number? = self.__indexMappings.Classes[className]
 	if (not classIndex) then return end
 
-	return tableDeepCopy(self.__data.Classes[classIndex])
-end)
+	return self.__data.Classes[classIndex]
+end
 
 -- Returns an array of class names, in the form
 -- { className, superclass1, ..., "Instance" }
-APIData.GetClassHierarchy = memoiseProxy(function(self: APIData, className: string): array<string>?
+APIData.GetClassHierarchy = function(self: APIData, className: string): array<string>?
 	local hierarchy: array<string> = {}
 
 	local classIndex: number? = self.__indexMappings.Classes[className]
@@ -303,10 +291,10 @@ APIData.GetClassHierarchy = memoiseProxy(function(self: APIData, className: stri
 	end
 
 	return hierarchy
-end)
+end
 
 -- Returns a dictionary containing arrays of class members
-APIData.__getClassMembers = memoiseProxy(function(self: APIData, className: string, memberType: string, filterParams: GetClassMembersParams?): dictionary<string, array<APIClassMember>>?
+APIData.__getClassMembers = function(self: APIData, className: string, memberType: string, filterParams: GetClassMembersParams?): dictionary<string, array<APIClassMember>>?
 	if (not VALID_CLASS_MEMBER_TYPES[memberType]) then return end
 
 	filterParams = filterParams or {}
@@ -331,11 +319,11 @@ APIData.__getClassMembers = memoiseProxy(function(self: APIData, className: stri
 			if ((member.MemberType == memberType) and ((filterParams.FilterCallback == nil) and true or filterParams.FilterCallback(classData.Name, member))) then
 				if (removeOverridenMembers) then
 					if (not overrides[member.Name]) then
-						classMembers[#classMembers + 1] = tableDeepCopy(member)
+						classMembers[#classMembers + 1] = member
 						overrides[member.Name] = true
 					end
 				else
-					classMembers[#classMembers + 1] = tableDeepCopy(member)
+					classMembers[#classMembers + 1] = member
 				end
 			end
 		end
@@ -348,9 +336,9 @@ APIData.__getClassMembers = memoiseProxy(function(self: APIData, className: stri
 	end
 
 	return members
-end)
+end
 
-APIData.GetClassMemberData = memoiseProxy(function(self: APIData, className: string, memberType: string, memberName: string): APIClassMember?
+APIData.GetClassMemberData = function(self: APIData, className: string, memberType: string, memberName: string): APIClassMember?
 	if (not VALID_CLASS_MEMBER_TYPES[memberType]) then return end
 
 	local classIndex: number = self.__indexMappings.Classes[className]
@@ -359,8 +347,8 @@ APIData.GetClassMemberData = memoiseProxy(function(self: APIData, className: str
 	local classMemberIndex = self.__indexMappings.ClassMembers[classIndex][memberType][memberName]
 	if (not classMemberIndex) then return end
 
-	return tableDeepCopy(self.__data.Classes[classIndex].Members[classMemberIndex])
-end)
+	return self.__data.Classes[classIndex].Members[classMemberIndex]
+end
 
 -- Aliases for __getClassMembers for specific member types
 APIData.GetClassCallbacks = function(self: APIData, className: string, filterParams: GetClassMembersParams?): dictionary<string, array<APIClassMember>>?
@@ -436,12 +424,12 @@ APIData.IsClassMemberNative = function(self: APIData, className: string, memberT
 end
 
 -- Returns an APIEnum
-APIData.GetEnumData = memoiseProxy(function(self: APIData, enumName: string): APIEnum?
+APIData.GetEnumData = function(self: APIData, enumName: string): APIEnum?
 	local enumIndex: number? = self.__indexMappings.Enums[enumName]
 	if (not enumIndex) then return end
 
-	return tableDeepCopy(self.__data.Enums[enumIndex])
-end)
+	return self.__data.Enums[enumIndex]
+end
 
 -- Returns if an Enum is part of the original API dump
 APIData.IsEnumNative = function(self: APIData, enumName: string): boolean?

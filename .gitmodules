@@ -1,3 +1,0 @@
-[submodule "includes/memoize"]
-	path = includes/memoize
-	url = https://github.com/kikito/memoize.lua
