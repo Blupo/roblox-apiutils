@@ -271,7 +271,7 @@ end
 
 -- Returns an array of class names, in the form
 -- { className, superclass1, ..., "Instance" }
-APIData.GetClassHierarchy = function(self: APIData, className: string): array<string>?
+APIData.GetClassHierarchy = function(self: APIData, className: string, ignore: dictionary<string, boolean>): array<string>?
 	local hierarchy: array<string> = {}
 
 	local classIndex: number? = self.__indexMappings.Classes[className]
@@ -281,6 +281,7 @@ APIData.GetClassHierarchy = function(self: APIData, className: string): array<st
 		local classData: APIClass = self.__data.Classes[classIndex]
 		local superclass: string = classData.Superclass
 
+		if (ignore[classData.Name]) then return hierarchy end
 		hierarchy[#hierarchy + 1] = classData.Name
 
 		if (superclass ~= "<<<ROOT>>>") then
