@@ -97,38 +97,9 @@ APIInterface.new = function(apiData)
 	return self
 end
 
-APIInterface.ObjectIsA = function(self, object: Instance, className: string): boolean
-	-- todo
-	return false
-end
-
---[[
--- callback functions may be infeasible
-APIInterface.DefineCallback = function(self, object: Instance, callbackName: string, callback: (any) -> any)
-
-end
-
-APIInterface.UndefineCallback = function(self, object: Instance, callbackName: string)
-	
-end
-
-APIInterface.InvokeCallback = function(self, object: Instance, callbackName: string, arguments: {}): any
-	
-end
-
-
-APIInterface.SubscribeToEvent = function(self, object: Instance, eventName: string, callback: (any) -> ()): RBXScriptConnection
-
-end
-
-APIInterface.CallFunction = function(self, object: Instance, functionName: string, arguments: {}): any
-
-end
---]]
-
 -- Returns the property value of an object
 
-APIInterface.GetProperty = function(self, object: Instance, propertyName: string, overrideClassName: string?, noCheck: boolean?): any
+APIInterface.GetProperty = function(self, object: Instance, propertyName: string, overrideClassName: string?, noCheck: boolean?, safe: boolean?): any
 	local APIData = self.__APIData
 
 	local objectClassName = overrideClassName or object.ClassName
@@ -154,7 +125,13 @@ APIInterface.GetProperty = function(self, object: Instance, propertyName: string
 	end
 
 	if (APIData:IsClassMemberNative(actualPropertyClassName, "Property", propertyName)) then
-		return object[propertyName]
+		if (safe) then
+			return pcall(function()
+				return object[propertyName]
+			end)
+		else
+			return object[propertyName]
+		end
 	else
 		-- todo
 		local classBehaviourIndex = self.__behaviourIndex.ClassMember[actualPropertyClassName]
@@ -163,11 +140,15 @@ APIInterface.GetProperty = function(self, object: Instance, propertyName: string
 		local propertyBehaviourTable = classBehaviourIndex.Property[propertyName]
 		assert(propertyBehaviourTable, "No behaviour is defined for " .. actualPropertyClassName .. "." .. propertyName)
 
-		return propertyBehaviourTable.Get(object)
+		if (safe) then
+			return pcall(propertyBehaviourTable.Get, object)
+		else
+			return propertyBehaviourTable.Get(object)
+		end
 	end
 end
 
-APIInterface.SetProperty = function(self, object: Instance, propertyName: string, newValue: any, overrideClassName: string?, noCheck: boolean?)
+APIInterface.SetProperty = function(self, object: Instance, propertyName: string, newValue: any, overrideClassName: string?, noCheck: boolean?, safe: boolean?)
 	local APIData = self.__APIData
 
 	local objectClassName = overrideClassName or object.ClassName 
@@ -200,9 +181,14 @@ APIInterface.SetProperty = function(self, object: Instance, propertyName: string
 	if (APIData:IsClassMemberNative(actualPropertyClassName, "Property", propertyName)) then
 		assert(checkDataType(propertyValueType, newValue), "Type check failed for " .. propertyName .. ", expected " .. propertyValueType.Name)
 
-		object[propertyName] = newValue
+		if (safe) then
+			pcall(function()
+				object[propertyName] = newValue
+			end)
+		else
+			object[propertyName] = newValue
+		end
 	else
-		-- todo
 		local classMemberBehaviourIndex = self.__behaviourIndex.ClassMember[actualPropertyClassName]
 		assert(classMemberBehaviourIndex, "No behaviour table is defined for class " .. actualPropertyClassName)
 
@@ -211,7 +197,11 @@ APIInterface.SetProperty = function(self, object: Instance, propertyName: string
 		
 		assert(checkDataType(propertyValueType, newValue), "Type check failed for " .. propertyName .. ", expected " .. propertyValueType.Name)
 
-		return propertyBehaviourTable.Set(object, newValue)
+		if (safe) then
+			pcall(propertyBehaviourTable.Set, object, newValue)
+		else
+			propertyBehaviourTable.Set(object, newValue)
+		end
 	end
 end
 
